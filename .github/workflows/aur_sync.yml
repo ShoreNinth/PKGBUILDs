@@ -25,12 +25,9 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v4
 
-      # Runs a single command using the runners shell
-      - name: Run a one-line script
-        run: git clone https://aur.archlinux.org/goby-community.git goby-community
-
-      # Runs a set of commands using the runners shell
-      - name: Run a multi-line script
+      # Runs a set of commands using the runners shell      
+      - name: Clone AUR
         run: |
-          echo Add other actions to build,
-          echo test, and deploy your project.
+          rm -rf goby-community
+          git clone https://aur.archlinux.org/goby-community.git goby-community
+
