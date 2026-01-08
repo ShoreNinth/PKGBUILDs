@@ -36,8 +36,6 @@ jobs:
           fi
           echo "获取到最新版本: $NEW_VERSION"
           echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-
-          # 同时写入环境变量供后续步骤使用
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
       - name: 4. 获取当前 PKGBUILD 中的版本
@@ -65,7 +63,6 @@ jobs:
           DOWNLOAD_URL="https://goby-storage-public.oss-cn-beijing.aliyuncs.com/${{ env.NEW_VERSION }}/goby-linux-x64-${{ env.NEW_VERSION }}-Community.zip"
 
           echo "正在下载文件以计算校验和..."
-          # 下载文件到临时位置，并计算 SHA256
           curl -k -L -H 'Referer: https://gobysec.net/' -o /tmp/goby-new.zip "$DOWNLOAD_URL"
 
           NEW_SHA256=$(sha256sum /tmp/goby-new.zip | cut -d' ' -f1)
@@ -99,18 +96,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # 添加正确的文件路径
           git add ${{ env.PKGBUILD_PATH }}
-
-          git commit -m "chore(goby-community): update to ${{ env.NEW_VERSION }}"
+          git commit -m "goby-community: update to ${{ env.NEW_VERSION }}"
           git push
 
       - name: 9. 输出结果摘要
         run: |
           if [ "${{ steps.version_diff.outputs.has_update }}" = "true" ]; then
             echo "✅ 已发现更新并自动提交！"
-            echo "::notice title=Goby 更新就绪::新版本 ${{ env.NEW_VERSION }} 已就绪，请同步仓库并推送到 AUR。"
-            # 你可以在此处添加自定义通知，如 Discord/Telegram Webhook
+            echo "::notice title=Goby-Community 更新就绪::新版本 ${{ env.NEW_VERSION }} 已就绪，请同步仓库并推送到 AUR。"
           else
             echo "ℹ️ 暂无更新。"
           fi
