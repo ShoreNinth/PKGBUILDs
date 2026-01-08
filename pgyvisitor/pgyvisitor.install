@@ -1,29 +1,25 @@
-pre_install(){
-    if [ -f "/etc/oray/pgyvpn/config.ini" ]; then
-        cp /etc/oray/pgyvpn/config.ini /tmp/pgyconfig.ini > /dev/null 2>&1
-        exit 0;
-    fi
-}
-
 post_install() {
-    if [ ! -d "/var/log/oray/pgyvpn" ];then
-        mkdir -p /var/log/oray/pgyvpn
-    fi
-    chown $USER:$USER /var/log/oray/pgyvpn
+
+    killall pgyvpn_svr > /dev/null 2>&1
+    killall pgyserver > /dev/null 2>&1
+    killall pgyvpn_oraysl > /dev/null 2>&1
+    killall pgyvpn_monitor > /dev/null 2>&1
+    killall pgyvpn_proxy > /dev/null 2>&1
+    killall pgystarnetsvr > /dev/null 2>&1
+
+	mkdir -p /var/log/oray/pgyvpn
+	chmod 755 /var/log/oray/pgyvpn
 
 	systemctl enable pgyvpn.service
 	systemctl start pgyvpn.service
 
-    if [ -e "/usr/share/pgyvpn/script/pgyvpn_track" ]; then
-        /usr/share/pgyvpn/script/pgyvpn_track install
-    fi
+    /usr/share/pgyvpn/script/pgyvpn_track install
 
     echo "PgyVisitor Install Success"
 }
 
 pre_remove() {
 
-    #kill all runing pgyvpn
     killall pgyvpn_svr > /dev/null 2>&1
     killall pgyvisitor > /dev/null 2>&1
     killall pgyvpn_oraysl > /dev/null 2>&1
@@ -53,12 +49,7 @@ pre_remove() {
 
     /usr/share/pgyvpn/script/pgyvpn_track uninstall
 
-    rm /etc/systemd/system/pgyvpn.service > /dev/null 2>&1
-    rm /etc/bash_completion.d/pgyvpn_sh_prompt > /dev/null 2>&1
     rm -rf /var/log/oray > /dev/null 2>&1
-    rm -rf /etc/oray > /dev/null 2>&1
-    rm /tmp/pgyconfig.ini > /dev/null 2>&1
-    rm -rf /usr/share/pgyvpn > /dev/null 2>&1
 
     ##route delete###
     route_del
