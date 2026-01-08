@@ -1,0 +1,116 @@
+name: Check for Goby Updates
+
+on:
+  schedule:
+    # 每三天 UTC 时间 12:00 运行一次（北京时间 20:00）
+    - cron: '0 12 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  check-and-prepare:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 1. 检出仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史，用于后续 diff 比较
+
+      - name: 2. 设置环境变量
+        run: |
+          echo "PKGNAME=goby" >> $GITHUB_ENV
+          echo "PKGBUILD_PATH=./goby-community/PKGBUILD" >> $GITHUB_ENV
+          echo "PKGDIR=./goby-community" >> $GITHUB_ENV
+
+      - name: 3. 获取最新版本号
+        id: get_version
+        run: |
+          API_URL="https://gobies.org/download/release?type=full_url_linux&id=319"
+          NEW_VERSION=$(curl -sIL -H 'Referer: https://gobysec.net/' "$API_URL" | grep -i 'location: ' | tail -1 | sed -n 's|.*/\([0-9]\+\.[0-9]\+\.[0-9]\+\).*|\1|p')
+
+          if [ -z "$NEW_VERSION" ]; then
+            echo "❌ 无法获取版本号"
+            exit 1
+          fi
+          echo "获取到最新版本: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+
+          # 同时写入环境变量供后续步骤使用
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: 4. 获取当前 PKGBUILD 中的版本
+        id: current_version
+        run: |
+          CURRENT_VERSION=$(grep -m1 '^pkgver=' ${{ env.PKGBUILD_PATH }} | cut -d= -f2)
+          echo "当前 PKGBUILD 版本: $CURRENT_VERSION"
+          echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+      - name: 5. 比较版本
+        id: version_diff
+        run: |
+          if [ "${{ steps.get_version.outputs.new_version }}" = "${{ steps.current_version.outputs.current_version }}" ]; then
+            echo "🔄 版本未更新，无需操作。"
+            echo "has_update=false" >> $GITHUB_OUTPUT
+            exit 0
+          else
+            echo "🎉 发现新版本: ${{ steps.current_version.outputs.current_version }} -> ${{ steps.get_version.outputs.new_version }}"
+            echo "has_update=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 6. 下载新版本并计算 SHA256（仅在更新时运行）
+        if: steps.version_diff.outputs.has_update == 'true'
+        run: |
+          DOWNLOAD_URL="https://goby-storage-public.oss-cn-beijing.aliyuncs.com/${{ env.NEW_VERSION }}/goby-linux-x64-${{ env.NEW_VERSION }}-Community.zip"
+
+          echo "正在下载文件以计算校验和..."
+          # 下载文件到临时位置，并计算 SHA256
+          curl -k -L -H 'Referer: https://gobysec.net/' -o /tmp/goby-new.zip "$DOWNLOAD_URL"
+
+          NEW_SHA256=$(sha256sum /tmp/goby-new.zip | cut -d' ' -f1)
+          echo "新文件 SHA256: $NEW_SHA256"
+          echo "NEW_SHA256=$NEW_SHA256" >> $GITHUB_ENV
+
+          FILE_SIZE=$(stat -c%s /tmp/goby-new.zip)
+          echo "文件大小: $((FILE_SIZE / 1048576)) MB"
+
+          rm -f /tmp/goby-new.zip
+
+      - name: 7. 更新 PKGBUILD 文件（仅在更新时运行）
+        if: steps.version_diff.outputs.has_update == 'true'
+        run: |
+          # 备份原文件
+          cp ${{ env.PKGBUILD_PATH }} ${{ env.PKGBUILD_PATH }}.bak
+
+          # 更新 pkgver
+          sed -i "s/^pkgver=.*/pkgver=${{ env.NEW_VERSION }}/" ${{ env.PKGBUILD_PATH }}
+
+          sed -i "/^sha256sums=(/,/^)/ {0,/'[^']*'/s/'[^']*'/'$NEW_SHA256'/}" ${{ env.PKGBUILD_PATH }}
+
+          echo "PKGBUILD 更新完成。"
+          echo "更新摘要："
+          echo "  pkgver: ${{ steps.current_version.outputs.current_version }} -> ${{ env.NEW_VERSION }}"
+          echo "  sha256sums: -> $NEW_SHA256"
+
+      - name: 8. 提交更改（仅在更新时运行）
+        if: steps.version_diff.outputs.has_update == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # 添加正确的文件路径
+          git add ${{ env.PKGBUILD_PATH }}
+
+          git commit -m "chore(goby-community): update to ${{ env.NEW_VERSION }}"
+          git push
+
+      - name: 9. 输出结果摘要
+        run: |
+          if [ "${{ steps.version_diff.outputs.has_update }}" = "true" ]; then
+            echo "✅ 已发现更新并自动提交！"
+            echo "::notice title=Goby 更新就绪::新版本 ${{ env.NEW_VERSION }} 已就绪，请同步仓库并推送到 AUR。"
+            # 你可以在此处添加自定义通知，如 Discord/Telegram Webhook
+          else
+            echo "ℹ️ 暂无更新。"
+          fi
